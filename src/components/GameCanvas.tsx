@@ -174,7 +174,7 @@ export default function GameCanvas() {
   }, []);
 
   return (
-    <div className="relative w-full h-screen bg-[#f0f7f0] overflow-hidden">
+    <div className="relative w-full h-screen bg-[#000000] overflow-hidden">
       <canvas
         ref={canvasRef}
         className="absolute inset-0 w-full h-full block"
@@ -190,7 +190,7 @@ export default function GameCanvas() {
             <button
               key={c.action}
               id={`btn-${c.action}`}
-              className="pointer-events-auto px-4 py-2 rounded bg-black text-white text-sm font-mono border border-zinc-300 active:bg-zinc-200"
+              className="pointer-events-auto px-4 py-2 rounded-full bg-[#0071e3] text-white text-xs font-semibold border-none active:opacity-90"
               onPointerDown={() => {}}
               onPointerUp={() => {}}
             >
@@ -210,7 +210,7 @@ export default function GameCanvas() {
             <button
               key={c.action}
               id={`btn-${c.action}`}
-              className="pointer-events-auto px-4 py-2 rounded bg-black text-white text-sm font-mono border border-zinc-300 active:bg-zinc-200"
+              className="pointer-events-auto px-4 py-2 rounded-full bg-[#0071e3] text-white text-xs font-semibold border-none active:opacity-90"
               onPointerDown={() => {}}
               onPointerUp={() => {}}
             >
