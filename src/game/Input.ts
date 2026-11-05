@@ -51,6 +51,22 @@ export class Input {
   }
 
   setKey(action: keyof InputState, value: boolean): void {
+    if (value) {
+      switch (action) {
+        case "throttle":
+          this.state.brake = false;
+          break;
+        case "brake":
+          this.state.throttle = false;
+          break;
+        case "steerLeft":
+          this.state.steerRight = false;
+          break;
+        case "steerRight":
+          this.state.steerLeft = false;
+          break;
+      }
+    }
     this.state[action] = value;
   }
 

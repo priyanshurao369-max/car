@@ -21,6 +21,13 @@ const CONTROLS: Control[] = [
   { label: "Handbrake", action: "handbrake", icon: "␣" },
 ];
 
+const DPAD: Control[] = [
+  { label: "Throttle", action: "throttle", icon: "▲" },
+  { label: "Steer Left", action: "steerLeft", icon: "◀" },
+  { label: "Brake", action: "brake", icon: "▼" },
+  { label: "Steer Right", action: "steerRight", icon: "▶" },
+];
+
 export default function GameCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const physicsRef = useRef<Physics | null>(null);
@@ -66,6 +73,11 @@ export default function GameCanvas() {
     bindButton("btn-steerLeft", "steerLeft");
     bindButton("btn-steerRight", "steerRight");
     bindButton("btn-handbrake", "handbrake");
+
+    bindButton("dpad-throttle", "throttle");
+    bindButton("dpad-steerLeft", "steerLeft");
+    bindButton("dpad-brake", "brake");
+    bindButton("dpad-steerRight", "steerRight");
 
     let lastTime = performance.now();
     let frames = 0;
@@ -163,41 +175,47 @@ export default function GameCanvas() {
       <canvas
         ref={canvasRef}
         className="absolute inset-0 w-full h-full block"
+        style={{ touchAction: "none" }}
       />
+      {/* D-pad: bottom left */}
       <div
-        className="absolute bottom-8 right-8 flex flex-col gap-2 pointer-events-none"
+        className="absolute bottom-8 left-8 flex flex-col gap-2 pointer-events-none"
+        style={{ touchAction: "none" }}
       >
-        <div
-          className="flex gap-2 pointer-events-auto"
-          style={{ touchAction: "none" }}
-        >
-          {[CONTROLS[0], CONTROLS[1]].map((c) => (
+        <div className="flex gap-2 justify-center pointer-events-auto">
+          {DPAD.filter((b) => b.action === "throttle").map((c) => (
             <button
               key={c.action}
-              id={`btn-${c.action}`}
-              className="pointer-events-auto px-4 py-2 rounded-full bg-[#0071e3] text-white text-xs font-semibold border-none active:opacity-90"
-              onPointerDown={() => {}}
-              onPointerUp={() => {}}
+              id={`dpad-${c.action}`}
+              className="pointer-events-auto w-16 h-16 rounded-full bg-[#0071e3] text-white text-xs font-semibold border-none active:opacity-90 select-none"
+            >
+              {c.icon}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-2 pointer-events-auto">
+          {DPAD.filter((b) => b.action !== "throttle").map((c) => (
+            <button
+              key={c.action}
+              id={`dpad-${c.action}`}
+              className="pointer-events-auto w-16 h-16 rounded-full bg-[#0071e3] text-white text-xs font-semibold border-none active:opacity-90 select-none"
             >
               {c.icon}
             </button>
           ))}
         </div>
       </div>
+      {/* Action buttons: bottom right */}
       <div
-        className="absolute bottom-8 left-8 flex flex-col gap-2 pointer-events-none"
+        className="absolute bottom-8 right-8 flex flex-col gap-2 pointer-events-none"
+        style={{ touchAction: "none" }}
       >
-        <div
-          className="flex gap-2 pointer-events-auto"
-          style={{ touchAction: "none" }}
-        >
-          {[CONTROLS[2], CONTROLS[3]].map((c) => (
+        <div className="flex flex-col gap-2 pointer-events-auto">
+          {[CONTROLS[0], CONTROLS[1], CONTROLS[4]].map((c) => (
             <button
               key={c.action}
               id={`btn-${c.action}`}
-              className="pointer-events-auto px-4 py-2 rounded-full bg-[#0071e3] text-white text-xs font-semibold border-none active:opacity-90"
-              onPointerDown={() => {}}
-              onPointerUp={() => {}}
+              className="pointer-events-auto px-6 py-3 rounded-full bg-[#0071e3] text-white text-sm font-semibold border-none active:opacity-90 select-none"
             >
               {c.icon}
             </button>
