@@ -1,90 +1,119 @@
-# Plan: Mobile-friendly controls (Virtual D-pad + action buttons)
+# Plan: Omnidirectional square, velocity-aligning rotation, gamepad, haptics
 
 ## Goal
 
-Make the game playable on mobile touch devices. Add a virtual D-pad on the left side for steering and action buttons on the right side for throttle/brake/handbrake. Keyboard controls remain fully intact for desktop. Prevent page scrolling and text selection during play.
+Transform the vehicle into an omnidirectional square that:
+- Moves freely in all 4 directions + diagonals via D-pad/keyboard/gamepad left stick
+- Rotates to face its velocity direction (velocity-aligning, no independent heading)
+- Supports Gamepad API input
+- Triggers haptic vibration on wall collisions
 
-## Current state (from code inspection)
+## Current state
 
-- `src/components/GameCanvas.tsx`: Five small on-screen buttons (`px-4 py-2 text-xs`, Apple Blue pills) at bottom corners; separate DOM `pointerdown/up/leave/cancel` listeners plus empty React `onPointerDown/Up` handlers (redundant); no `touch-action: none`; canvas can scroll the page while playing.
-- `src/game/Input.ts`: Keyboard-only `Input` class with `setKey(action, value)` public method. Opposing inputs (throttle+brake, steerLeft+steerRight) can both be true simultaneously.
-- `src/app/layout.tsx`: No viewport meta tag → mobile browsers scale the page like desktop.
-- `src/app/globals.css`: Apple DESIGN.md tokens defined (Apple Blue `#0071e3`, Porcelain `#f5f5f7`, pills `9999px` radius) but no touch-specific styles.
-- `plan.md` CONTROLS section says "Keyboard Only" — will need updating to document touch controls.
+- `src/game/VehicleController.ts`: Car physics — steering angle, engine force, lateral grip, weight transfer, reverse, rotation applied to Matter body.
+- `src/game/Input.ts`: InputState = throttle/brake/steerLeft/steerRight/handbrake. Keyboard W/A/S/D + arrows.
+- `src/game/Render.ts`: renderVehicle applies `ctx.rotate(state.rotation)`.
+- `src/components/GameCanvas.tsx`: Bottom-left D-pad + bottom-right action buttons. No gamepad, no haptics.
+- `src/game/config/vehicle.ts`: Car-specific config (engineForce, brakeForce, steeringSpeed, etc.).
+- Previous plan (this file) decided "no rotation" — that decision is now **superseded** by velocity-aligning rotation.
 
 ## Decisions
 
 | Decision | Value | Rationale |
 |----------|-------|-----------|
-| Layout | Virtual D-pad (left) + action buttons (right) | User selected |
-| D-pad | Left = steerLeft, Right = steerRight, Up = throttle, Down = brake | Left/right steer; up/down throttle/brake enables single-thumb play; duplicates right-side actions as convenience |
-| Action buttons | Throttle, Brake, Handbrake stacked vertically on right | Matches existing three right-side actions; larger touch targets |
-| Touch target size | Minimum 60px diameter | Apple HIG minimum is 44px; 60px gives comfortable mobile play |
-| Button style | Apple Blue `#0071e3` pills (`9999px` radius) per DESIGN.md, larger | Consistent with existing design system |
-| Scroll prevention | `touch-action: none` on canvas and all control buttons; viewport `user-scalable=no` | Stops page scroll/zoom during play |
-| Text selection | `user-select: none` on buttons; `-webkit-user-select: none` | Prevents selection on long press |
-| Opposing input guard | throttle+brake mutually exclusive; steerLeft+steerRight mutually exclusive | Prevents touch inputs fighting each other |
-| Keyboard | Fully unchanged | Desktop experience preserved |
-| Viewport meta | `<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">` | Proper mobile scaling |
+| Control scheme | Direction-based (up/down/left/right) | User decided; D-pad + keyboard + gamepad left stick all map to same 4 directions |
+| Diagonal movement | Allowed, vector normalized so diagonal isn't faster | Standard for 4-direction input |
+| Momentum | Keep with drag | Reuses existing `applyDrag`, fits physics sandbox |
+| Speed cap | `VEHICLE_CONFIG.maxSpeed` (10) | Already defined |
+| Rotation | Velocity-aligning: `angle = Math.atan2(vy, vx)` when moving | User chose option C; square always faces movement direction |
+| Rotation when stopped | Hold last angle (don't snap to 0) | Smoother visual, no jitter when idle |
+| Gamepad | Gamepad API, left stick → direction, buttons → actions | Standard web API, no dependencies |
+| Haptics | `navigator.vibrate()` + GamepadAPI vibration on collision | Simple, dependency-free |
+| Collision | Keep Matter.js walls/boundaries | Already implemented |
 
 ## Files affected
 
-### 1. `src/app/layout.tsx`
-Add viewport meta tag inside `<head>`.
+### 1. `src/game/config/vehicle.ts`
+- Remove: `engineForce`, `brakeForce`, `steeringSpeed`, `maxSteeringAngle`, `lateralGrip`, `rearGripMultiplier`, `handbrakeRearGripMultiplier`, `weightTransferAccel`, `weightTransferBrake`, `reverseSpeed`, `angularDrag`
+- Keep: `width`, `height`, `mass`, `maxSpeed`, `dragCoefficient`, `rollingResistance`, `arenaSize`, `obstacleCount`, `frictionCoefficient`
+- Add: `moveForce` (acceleration per frame when direction held)
 
-### 2. `src/components/GameCanvas.tsx`
-- Replace bottom-corner button rows with left D-pad + right action button column
-- Add `touch-action: none` to canvas container and all buttons
-- Add `user-select: none` via Tailwind `select-none`
-- Remove redundant empty React `onPointerDown/Up` handlers (DOM listeners already handle input)
-- Keep `pointer-events-none` wrapper + `pointer-events-auto` inner pattern
-- Increase button size to at least 60px, larger text (`text-sm` instead of `text-xs`)
+### 2. `src/game/Input.ts`
+- `InputState`: `up`, `down`, `left`, `right` (replace throttle/brake/steerLeft/steerRight/handbrake)
+- `KEYS` map: W/ArrowUp→up, S/ArrowDown→down, A/ArrowLeft→left, D/ArrowRight→right. Space removed.
+- `setKey`: up↔down mutually exclusive; left↔right mutually exclusive; diagonal (up+left) allowed
+- Add gamepad polling: `pollGamepad()` reads `navigator.getGamepads()[0]`, maps left stick to up/down/left/right, maps buttons to actions if needed
+- Add `vibrate(ms)` helper wrapping `navigator.vibrate()` and gamepad vibration actuator
 
-### 3. `src/game/Input.ts`
-Add mutual exclusivity in `setKey`:
-- Setting `throttle: true` sets `brake: false`; setting `brake: true` sets `throttle: false`
-- Setting `steerLeft: true` sets `steerRight: false`; setting `steerRight: true` sets `steerLeft: false`
+### 3. `src/game/VehicleController.ts`
+Rewrite `update()`:
+- Read `input.up/down/left/right`
+- Compute direction: `dx = (right?1:0)-(left?1:0)`, `dy = (down?1:0)-(up?1:0)`; normalize if magnitude > 0
+- `vx += dx * moveForce; vy += dy * moveForce`
+- Apply `applyDrag({x, y})`
+- Cap speed at `maxSpeed`
+- `angle = speed > 0.01 ? Math.atan2(vy, vx) : this.state.rotation` (hold last angle when stopped)
+- `Matter.Body.setVelocity(body, {x, y}); Matter.Body.setAngularVelocity(body, 0)`
+- `state.rotation = angle; state.angularVelocity = 0`
+- Remove steering/engine/grip/weight-transfer/reverse logic and imports
 
-### 4. `plan.md` (optional documentation)
-Update CONTROLS section from "Keyboard Only" to "Keyboard + Touch". Out of scope for this plan — mark as out of scope.
+### 4. `src/game/Render.ts`
+- `renderVehicle`: keep `ctx.rotate(state.rotation)` (now velocity-derived, square faces movement)
+- No other changes needed
+
+### 5. `src/components/GameCanvas.tsx`
+- Replace CONTROLS/DPAD arrays with single `DIRECTIONS`: up/▲, down/▼, left/◀, right/▶
+- Single D-pad cluster bottom-left: up above, left/right/down below
+- Remove right-side action buttons entirely
+- Bind `dpad-up/down/left/right` to `up/down/left/right`
+- Keep `touch-action: none`, `select-none`
+- Add `gamepadconnected`/`gamepaddisconnected` listeners; start gamepad polling loop
+- On wall collision (`hitWalls` non-empty): call `navigator.vibrate(100)` and gamepad vibration
+
+### 6. `src/game/systems/` — delete unused
+- Delete: SteeringSystem.ts, EngineSystem.ts, GripSystem.ts, WeightTransferSystem.ts
+- DragSystem.ts: keep `applyDrag`, remove `applyAngularDrag`
 
 ## Data flow
 
 ```
-Touch start/end on button → Input.setKey(action, true/false)
-                                ↓
+D-pad/keyboard/gamepad → Input.setKey(up/down/left/right)
+    ↓ (mutual exclusivity)
+Input.pollGamepad() → merges gamepad stick into same InputState
 Physics.tick() → input.get() → VehicleController.update(input)
-                                ↓
-Opposing-input guard in setKey prevents throttle+brake / steerLeft+steerRight
-                              ↑
-D-pad: left=steerLeft, right=steerRight, up=throttle, down=brake
-Right: throttle, brake, handbrake (same actions as D-pad up/down)
+    ↓
+direction vector → normalize → velocity += direction * moveForce
+velocity *= applyDrag → cap at maxSpeed
+angle = atan2(vy, vx) when moving
+Matter.Body.setVelocity + setAngularVelocity(0)
+    ↓
+Collision check → hitWalls → navigator.vibrate() + gamepad.vibration
+    ↓
+Render: translate + rotate(state.rotation) + fillRect
 ```
 
-## Edge cases handled
+## Edge cases
 
-- **Simultaneous thumb touches**: Multiple fingers on D-pad and action buttons work (pointer events are per-element)
-- **Rapid tap-release**: pointerup releases key even if finger slides off (pointerleave/pointercancel also release)
-- **Opposing directions**: Holding left+right on D-pad → mutually exclusive, last wins; holding up+down → throttle/brake mutually exclusive, last wins
-- **Throttle+brake**: Last one wins; brake takes priority if pressed last — acceptable for mobile
-- **Single-thumb play**: Right thumb on D-pad alone can steer (left/right) and accelerate/brake (up/down)
-- **Canvas scroll**: `touch-action: none` prevents viewport scroll when thumb is on canvas or buttons
-- **Mobile ergonomics**: D-pad on left bottom for left thumb, actions on right bottom for right thumb; both within natural thumb zones
+- **Stopped square**: holds last angle (no snap to 0, no jitter)
+- **Opposing inputs** (up+down): mutually exclusive, last wins
+- **Diagonal**: normalized vector, same speed as axis
+- **Gamepad disconnected mid-play**: input falls back to keyboard/D-pad only
+- **Vibration unsupported**: `navigator.vibrate` is no-op, safe to call
+- **Wall collision**: Matter.js bounce + haptic pulse
 
 ## Out of scope
 
 - Multiplayer / networking
-- Gamepad support
-- Haptic feedback
-- Separate mobile-only UI variant (responsive design via single layout)
+- Separate mobile-only layout variant
+- Custom gamepad button remapping UI
 
 ## Validation
 
 - `npx tsc --noEmit` — no errors
 - `npx eslint src` — no warnings/errors
 - `npx next build` — completes successfully
-- Manual mobile test: open on phone, D-pad steers, action buttons accelerate/brake/drift, no page scroll, no text selection, keyboard still works on desktop
+- Manual: D-pad/keyboard/gamepad moves square in all directions; square faces movement direction; vibration on wall hit; gamepad connect/disconnect works
 
 ## Rollback
 
-Revert `src/components/GameCanvas.tsx` and `src/game/Input.ts` to pre-change state; remove viewport meta from `layout.tsx`.
+Revert `VehicleController.ts`, `Input.ts`, `Render.ts`, `GameCanvas.tsx`, `vehicle.ts`; delete systems folder changes; restore keyboard-only car physics.

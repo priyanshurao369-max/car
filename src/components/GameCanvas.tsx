@@ -7,31 +7,24 @@ import { clear, renderVehicle, renderHUD } from "@/game/Render";
 import { VEHICLE_CONFIG } from "@/game/config/vehicle";
 import type { InputState } from "@/game/Input";
 
-type Control = {
+type Direction = {
   label: string;
-  action: "throttle" | "brake" | "steerLeft" | "steerRight" | "handbrake";
+  action: "up" | "down" | "left" | "right";
   icon: string;
 };
 
-const CONTROLS: Control[] = [
-  { label: "Accelerate", action: "throttle", icon: "▲" },
-  { label: "Brake", action: "brake", icon: "▼" },
-  { label: "Steer Left", action: "steerLeft", icon: "◀" },
-  { label: "Steer Right", action: "steerRight", icon: "▶" },
-  { label: "Handbrake", action: "handbrake", icon: "␣" },
-];
-
-const DPAD: Control[] = [
-  { label: "Throttle", action: "throttle", icon: "▲" },
-  { label: "Steer Left", action: "steerLeft", icon: "◀" },
-  { label: "Brake", action: "brake", icon: "▼" },
-  { label: "Steer Right", action: "steerRight", icon: "▶" },
+const DIRECTIONS: Direction[] = [
+  { label: "Up", action: "up", icon: "▲" },
+  { label: "Left", action: "left", icon: "◀" },
+  { label: "Down", action: "down", icon: "▼" },
+  { label: "Right", action: "right", icon: "▶" },
 ];
 
 export default function GameCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const physicsRef = useRef<Physics | null>(null);
   const fpsRef = useRef(0);
+  const rafRef = useRef(0);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -68,16 +61,9 @@ export default function GameCanvas() {
       el.addEventListener("pointercancel", release);
     };
 
-    bindButton("btn-throttle", "throttle");
-    bindButton("btn-brake", "brake");
-    bindButton("btn-steerLeft", "steerLeft");
-    bindButton("btn-steerRight", "steerRight");
-    bindButton("btn-handbrake", "handbrake");
-
-    bindButton("dpad-throttle", "throttle");
-    bindButton("dpad-steerLeft", "steerLeft");
-    bindButton("dpad-brake", "brake");
-    bindButton("dpad-steerRight", "steerRight");
+    DIRECTIONS.forEach((d) => {
+      bindButton(`dpad-${d.action}`, d.action);
+    });
 
     let lastTime = performance.now();
     let frames = 0;
@@ -91,12 +77,18 @@ export default function GameCanvas() {
         lastTime = time;
       }
 
+      input.pollGamepad();
+
       const state = physics.getVehicleState();
       const camera = physics.getCamera();
       const world = physics.getWorld();
       const obstacles = world.obstacles;
       const boundaries = world.boundaries;
       const hitWalls = physics.getHitWalls();
+
+      if (hitWalls.size > 0) {
+        input.vibrate(100);
+      }
 
       clear(ctx, canvas.width, canvas.height);
 
@@ -136,7 +128,6 @@ export default function GameCanvas() {
         );
       }
 
-      // Closed boundary frame around the arena perimeter
       const halfArena = VEHICLE_CONFIG.arenaSize / 2;
       ctx.strokeStyle = "#6e6e73";
       ctx.lineWidth = 6;
@@ -158,13 +149,14 @@ export default function GameCanvas() {
 
       renderHUD(ctx, state, fpsRef.current);
 
-      requestAnimationFrame(render);
+      rafRef.current = requestAnimationFrame(render);
     };
 
-    requestAnimationFrame(render);
+    rafRef.current = requestAnimationFrame(render);
 
     return () => {
       window.removeEventListener("resize", resize);
+      cancelAnimationFrame(rafRef.current);
       physics.destroy();
       physicsRef.current = null;
     };
@@ -183,41 +175,24 @@ export default function GameCanvas() {
         style={{ touchAction: "none" }}
       >
         <div className="flex gap-2 justify-center pointer-events-auto">
-          {DPAD.filter((b) => b.action === "throttle").map((c) => (
+          {DIRECTIONS.filter((d) => d.action === "up").map((d) => (
             <button
-              key={c.action}
-              id={`dpad-${c.action}`}
+              key={d.action}
+              id={`dpad-${d.action}`}
               className="pointer-events-auto w-16 h-16 rounded-full bg-[#0071e3] text-white text-xs font-semibold border-none active:opacity-90 select-none"
             >
-              {c.icon}
+              {d.icon}
             </button>
           ))}
         </div>
         <div className="flex gap-2 pointer-events-auto">
-          {DPAD.filter((b) => b.action !== "throttle").map((c) => (
+          {DIRECTIONS.filter((d) => d.action !== "up").map((d) => (
             <button
-              key={c.action}
-              id={`dpad-${c.action}`}
+              key={d.action}
+              id={`dpad-${d.action}`}
               className="pointer-events-auto w-16 h-16 rounded-full bg-[#0071e3] text-white text-xs font-semibold border-none active:opacity-90 select-none"
             >
-              {c.icon}
-            </button>
-          ))}
-        </div>
-      </div>
-      {/* Action buttons: bottom right */}
-      <div
-        className="absolute bottom-8 right-8 flex flex-col gap-2 pointer-events-none"
-        style={{ touchAction: "none" }}
-      >
-        <div className="flex flex-col gap-2 pointer-events-auto">
-          {[CONTROLS[0], CONTROLS[1], CONTROLS[4]].map((c) => (
-            <button
-              key={c.action}
-              id={`btn-${c.action}`}
-              className="pointer-events-auto px-6 py-3 rounded-full bg-[#0071e3] text-white text-sm font-semibold border-none active:opacity-90 select-none"
-            >
-              {c.icon}
+              {d.icon}
             </button>
           ))}
         </div>

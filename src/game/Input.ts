@@ -1,77 +1,124 @@
 export type InputState = {
-  throttle: boolean;
-  brake: boolean;
-  steerLeft: boolean;
-  steerRight: boolean;
-  handbrake: boolean;
+  up: boolean;
+  down: boolean;
+  left: boolean;
+  right: boolean;
 };
 
 const KEYS = new Map<string, keyof InputState>([
-  ["KeyW", "throttle"],
-  ["ArrowUp", "throttle"],
-  ["KeyS", "brake"],
-  ["ArrowDown", "brake"],
-  ["KeyA", "steerLeft"],
-  ["ArrowLeft", "steerLeft"],
-  ["KeyD", "steerRight"],
-  ["ArrowRight", "steerRight"],
-  ["Space", "handbrake"],
+  ["KeyW", "up"],
+  ["ArrowUp", "up"],
+  ["KeyS", "down"],
+  ["ArrowDown", "down"],
+  ["KeyA", "left"],
+  ["ArrowLeft", "left"],
+  ["KeyD", "right"],
+  ["ArrowRight", "right"],
 ]);
 
 export class Input {
   private state: InputState = {
-    throttle: false,
-    brake: false,
-    steerLeft: false,
-    steerRight: false,
-    handbrake: false,
+    up: false,
+    down: false,
+    left: false,
+    right: false,
   };
+
+  private gamepadIndex: number | null = null;
 
   constructor() {
     window.addEventListener("keydown", this.onKeyDown);
     window.addEventListener("keyup", this.onKeyUp);
+    window.addEventListener("gamepadconnected", this.onGamepadConnect);
+    window.addEventListener("gamepaddisconnected", this.onGamepadDisconnect);
   }
 
   private onKeyDown = (e: KeyboardEvent): void => {
     const action = KEYS.get(e.code);
     if (action) {
-      this.state[action] = true;
+      this.setKey(action, true);
     }
   };
 
   private onKeyUp = (e: KeyboardEvent): void => {
     const action = KEYS.get(e.code);
     if (action) {
-      this.state[action] = false;
+      this.setKey(action, false);
     }
   };
 
-  get(): InputState {
-    return { ...this.state };
+  private onGamepadConnect = (e: GamepadEvent): void => {
+    this.gamepadIndex = e.gamepad.index;
+  };
+
+  private onGamepadDisconnect = (): void => {
+    this.gamepadIndex = null;
+  };
+
+  pollGamepad(): void {
+    const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+    const gp = this.gamepadIndex !== null ? gamepads[this.gamepadIndex] : null;
+    if (!gp) return;
+
+    const { axes, buttons } = gp;
+    const lx = axes[0] ?? 0;
+    const ly = axes[1] ?? 0;
+    const deadzone = 0.2;
+
+    this.setKey("up", ly < -deadzone);
+    this.setKey("down", ly > deadzone);
+    this.setKey("left", lx < -deadzone);
+    this.setKey("right", lx > deadzone);
+
+    if (buttons[0]?.pressed) {
+      this.vibrate(100);
+    }
+  }
+
+  vibrate(ms: number): void {
+    if (typeof navigator.vibrate === "function") {
+      navigator.vibrate(ms);
+    }
+    const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+    const gp = this.gamepadIndex !== null ? gamepads[this.gamepadIndex] : null;
+    if (gp?.vibrationActuator) {
+      gp.vibrationActuator.playEffect("dual-rumble", {
+        startDelay: 0,
+        duration: ms,
+        weakMagnitude: 0.8,
+        strongMagnitude: 0.8,
+      });
+    }
   }
 
   setKey(action: keyof InputState, value: boolean): void {
     if (value) {
       switch (action) {
-        case "throttle":
-          this.state.brake = false;
+        case "up":
+          this.state.down = false;
           break;
-        case "brake":
-          this.state.throttle = false;
+        case "down":
+          this.state.up = false;
           break;
-        case "steerLeft":
-          this.state.steerRight = false;
+        case "left":
+          this.state.right = false;
           break;
-        case "steerRight":
-          this.state.steerLeft = false;
+        case "right":
+          this.state.left = false;
           break;
       }
     }
     this.state[action] = value;
   }
 
+  get(): InputState {
+    return { ...this.state };
+  }
+
   destroy(): void {
     window.removeEventListener("keydown", this.onKeyDown);
     window.removeEventListener("keyup", this.onKeyUp);
+    window.removeEventListener("gamepadconnected", this.onGamepadConnect);
+    window.removeEventListener("gamepaddisconnected", this.onGamepadDisconnect);
   }
 }

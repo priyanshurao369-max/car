@@ -1,34 +1,25 @@
 import Matter from "matter-js";
 import { VEHICLE_CONFIG } from "./config/vehicle";
-import { updateSteering } from "./systems/SteeringSystem";
-import { updateEngine } from "./systems/EngineSystem";
-import { calculateGrip, applyLateralGrip } from "./systems/GripSystem";
-import { calculateWeightTransfer } from "./systems/WeightTransferSystem";
-import { applyDrag, applyAngularDrag } from "./systems/DragSystem";
+import { applyDrag } from "./systems/DragSystem";
 
 export type VehicleState = {
   position: { x: number; y: number };
   velocity: { x: number; y: number };
   rotation: number;
   angularVelocity: number;
-  steeringAngle: number;
-  throttleInput: boolean;
-  brakeInput: boolean;
-  handbrakeState: boolean;
+  inputDirection: { x: number; y: number };
 };
 
 export type VehicleInput = {
-  throttle: boolean;
-  brake: boolean;
-  steerLeft: boolean;
-  steerRight: boolean;
-  handbrake: boolean;
+  up: boolean;
+  down: boolean;
+  left: boolean;
+  right: boolean;
 };
 
 export class VehicleController {
   public body: Matter.Body;
   public state: VehicleState;
-  private steering: { angle: number; targetAngle: number };
 
   constructor(x: number, y: number) {
     this.body = Matter.Bodies.rectangle(x, y, VEHICLE_CONFIG.width, VEHICLE_CONFIG.height, {
@@ -43,101 +34,50 @@ export class VehicleController {
       velocity: { x: 0, y: 0 },
       rotation: 0,
       angularVelocity: 0,
-      steeringAngle: 0,
-      throttleInput: false,
-      brakeInput: false,
-      handbrakeState: false,
+      inputDirection: { x: 0, y: 0 },
     };
-
-    this.steering = { angle: 0, targetAngle: 0 };
   }
 
   update(input: VehicleInput): void {
-    const { brakeForce } = VEHICLE_CONFIG;
+    const { moveForce, maxSpeed } = VEHICLE_CONFIG;
 
     const vx = this.body.velocity.x;
     const vy = this.body.velocity.y;
-    const angle = this.body.angle;
-    const speed = Math.hypot(vx, vy);
 
-    this.state.throttleInput = input.throttle;
-    this.state.brakeInput = input.brake;
-    this.state.handbrakeState = input.handbrake;
+    const dx = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+    const dy = (input.down ? 1 : 0) - (input.up ? 1 : 0);
 
-    this.steering = updateSteering(this.steering, {
-      steerLeft: input.steerLeft,
-      steerRight: input.steerRight,
-    });
-    this.state.steeringAngle = this.steering.angle;
-
-    const engine = updateEngine(
-      {
-        throttle: input.throttle,
-        brake: input.brake,
-        handbrake: input.handbrake,
-      },
-      speed
-    );
-
-    const weightTransfer = calculateWeightTransfer(
-      engine.isAccelerating,
-      engine.isBraking,
-      this.state.steeringAngle
-    );
-
-    const grip = calculateGrip(
-      { x: vx, y: vy },
-      angle,
-      input.handbrake,
-      weightTransfer
-    );
-
-    const ax = Math.cos(angle) * engine.forwardForce;
-    const ay = Math.sin(angle) * engine.forwardForce;
-
-    let bx = 0;
-    let by = 0;
-    if (engine.isBraking) {
-      const forwardX = Math.cos(angle);
-      const forwardY = Math.sin(angle);
-      const forwardSpeed = vx * forwardX + vy * forwardY;
-
-      if (forwardSpeed > 0.01) {
-        bx = -(vx / speed) * brakeForce;
-        by = -(vy / speed) * brakeForce;
-      } else {
-        bx = -Math.cos(angle) * brakeForce * 0.6;
-        by = -Math.sin(angle) * brakeForce * 0.6;
-      }
+    const inputMag = Math.hypot(dx, dy);
+    let dirX = 0;
+    let dirY = 0;
+    if (inputMag > 0) {
+      dirX = dx / inputMag;
+      dirY = dy / inputMag;
     }
 
-    let nvx = vx + ax + bx;
-    let nvy = vy + ay + by;
+    this.state.inputDirection = { x: dirX, y: dirY };
 
-    const revFacing = nvx * Math.cos(angle) + nvy * Math.sin(angle);
-    if (revFacing < -VEHICLE_CONFIG.reverseSpeed) {
-      nvx = Math.cos(angle) * (-VEHICLE_CONFIG.reverseSpeed);
-      nvy = Math.sin(angle) * (-VEHICLE_CONFIG.reverseSpeed);
-    }
-
-    const gripped = applyLateralGrip({ x: nvx, y: nvy }, angle, grip.gripFactor);
-    nvx = gripped.x;
-    nvy = gripped.y;
+    let nvx = vx + dirX * moveForce;
+    let nvy = vy + dirY * moveForce;
 
     const dragged = applyDrag({ x: nvx, y: nvy });
     nvx = dragged.x;
     nvy = dragged.y;
 
-    const turnGating = Math.min(1, speed / 4);
-    let nav = applyAngularDrag(this.body.angularVelocity);
-    nav += this.state.steeringAngle * 0.06 * turnGating;
+    const newSpeed = Math.hypot(nvx, nvy);
+    if (newSpeed > maxSpeed) {
+      nvx = (nvx / newSpeed) * maxSpeed;
+      nvy = (nvy / newSpeed) * maxSpeed;
+    }
+
+    const angle = newSpeed > 0.01 ? Math.atan2(nvy, nvx) : this.state.rotation;
 
     Matter.Body.setVelocity(this.body, { x: nvx, y: nvy });
-    Matter.Body.setAngularVelocity(this.body, nav);
+    Matter.Body.setAngularVelocity(this.body, 0);
 
     this.state.velocity = { x: nvx, y: nvy };
     this.state.rotation = angle;
-    this.state.angularVelocity = nav;
+    this.state.angularVelocity = 0;
     this.state.position = { x: this.body.position.x, y: this.body.position.y };
   }
 }

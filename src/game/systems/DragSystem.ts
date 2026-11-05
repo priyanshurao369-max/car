@@ -16,7 +16,3 @@ export function applyDrag(
     y: velocity.y * combined,
   };
 }
-
-export function applyAngularDrag(angularVelocity: number): number {
-  return angularVelocity * VEHICLE_CONFIG.angularDrag;
-}
