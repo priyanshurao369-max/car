@@ -94,37 +94,21 @@ export default function GameCanvas() {
         -camera.position.y + canvas.height / 2
       );
 
-      // Dull green motion-tracking grid
-      const gridSize = 200;
-      const halfArena = VEHICLE_CONFIG.arenaSize / 2;
-      ctx.strokeStyle = "#a8c0a8";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      for (let x = -halfArena; x <= halfArena; x += gridSize) {
-        ctx.moveTo(x, -halfArena);
-        ctx.lineTo(x, halfArena);
-      }
-      for (let y = -halfArena; y <= halfArena; y += gridSize) {
-        ctx.moveTo(-halfArena, y);
-        ctx.lineTo(halfArena, y);
-      }
-      ctx.stroke();
-
       for (const b of boundaries) {
         const body = b as Matter.Body & { width: number; height: number };
         const pos = body.position;
         const isHit = hitWalls.has(body.id);
 
         if (isHit) {
-          ctx.fillStyle = "#ff0000";
-          ctx.shadowColor = "#ff0000";
+          ctx.fillStyle = "#2997ff";
+          ctx.shadowColor = "#2997ff";
           ctx.shadowBlur = 24;
         } else {
-          ctx.fillStyle = "#000000";
+          ctx.fillStyle = "#333336";
           ctx.shadowColor = "transparent";
           ctx.shadowBlur = 0;
         }
-        ctx.strokeStyle = "#111111";
+        ctx.strokeStyle = "#6e6e73";
         ctx.lineWidth = 4;
         ctx.fillRect(
           pos.x - body.width / 2,
@@ -141,7 +125,8 @@ export default function GameCanvas() {
       }
 
       // Closed boundary frame around the arena perimeter
-      ctx.strokeStyle = "#000000";
+      const halfArena = VEHICLE_CONFIG.arenaSize / 2;
+      ctx.strokeStyle = "#6e6e73";
       ctx.lineWidth = 6;
       ctx.strokeRect(
         -halfArena,
@@ -150,7 +135,7 @@ export default function GameCanvas() {
         VEHICLE_CONFIG.arenaSize
       );
 
-      ctx.fillStyle = "#999999";
+      ctx.fillStyle = "#6e6e73";
       for (const obs of obstacles) {
         ctx.fillRect(obs.x - obs.w / 2, obs.y - obs.h / 2, obs.w, obs.h);
       }

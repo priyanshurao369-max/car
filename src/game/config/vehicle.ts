@@ -16,7 +16,7 @@ export const VEHICLE_CONFIG = {
   angularDrag: 0.88,
   weightTransferAccel: 0.35,
   weightTransferBrake: 0.35,
-  arenaSize: 7500,
+  arenaSize: 5000,
   obstacleCount: 35,
   frictionCoefficient: 0.07,
 } as const;

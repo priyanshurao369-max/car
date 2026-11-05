@@ -97,13 +97,28 @@ export class VehicleController {
 
     let bx = 0;
     let by = 0;
-    if (engine.isBraking && speed > 0.01) {
-      bx = -(vx / speed) * brakeForce;
-      by = -(vy / speed) * brakeForce;
+    if (engine.isBraking) {
+      const forwardX = Math.cos(angle);
+      const forwardY = Math.sin(angle);
+      const forwardSpeed = vx * forwardX + vy * forwardY;
+
+      if (forwardSpeed > 0.01) {
+        bx = -(vx / speed) * brakeForce;
+        by = -(vy / speed) * brakeForce;
+      } else {
+        bx = -Math.cos(angle) * brakeForce * 0.6;
+        by = -Math.sin(angle) * brakeForce * 0.6;
+      }
     }
 
     let nvx = vx + ax + bx;
     let nvy = vy + ay + by;
+
+    const revFacing = nvx * Math.cos(angle) + nvy * Math.sin(angle);
+    if (revFacing < -VEHICLE_CONFIG.reverseSpeed) {
+      nvx = Math.cos(angle) * (-VEHICLE_CONFIG.reverseSpeed);
+      nvy = Math.sin(angle) * (-VEHICLE_CONFIG.reverseSpeed);
+    }
 
     const gripped = applyLateralGrip({ x: nvx, y: nvy }, angle, grip.gripFactor);
     nvx = gripped.x;
