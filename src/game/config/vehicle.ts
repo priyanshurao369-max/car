@@ -8,6 +8,9 @@ export const VEHICLE_CONFIG = {
   rollingResistance: 0.992,
   arenaSize: 5000,
   obstacleCount: 35,
+  starCount: 7,
+  starRadius: 18,
+  starMargin: 300,
   frictionCoefficient: 0.07,
 } as const;
 

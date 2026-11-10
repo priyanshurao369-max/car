@@ -9,11 +9,19 @@ export type Obstacle = {
   h: number;
 };
 
+export type Star = {
+  id: number;
+  x: number;
+  y: number;
+  collected: boolean;
+};
+
 export class World {
   public engine: Matter.Engine;
   public world: Matter.World;
   public boundaries: Matter.Body[] = [];
   public obstacles: Obstacle[] = [];
+  public stars: Star[] = [];
 
   constructor(width: number, height: number) {
     this.engine = Matter.Engine.create();
@@ -76,6 +84,51 @@ export class World {
 
   update(): void {
     Matter.Engine.update(this.engine, 1000 / 60);
+  }
+
+  spawnStars(): void {
+    const { arenaSize, starCount, starRadius, starMargin } = VEHICLE_CONFIG;
+    const half = arenaSize / 2;
+    const minDist = starRadius * 2 * 1.6;
+    const stars: Star[] = [];
+    let guard = 0;
+
+    const overlapsObstacle = (x: number, y: number): boolean => {
+      for (const obs of this.obstacles) {
+        const dx = x - obs.x;
+        const dy = y - obs.y;
+        if (Math.abs(dx) < obs.w / 2 + starRadius + 20 && Math.abs(dy) < obs.h / 2 + starRadius + 20) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    const overlapsStar = (x: number, y: number): boolean => {
+      for (const s of stars) {
+        if (Math.hypot(x - s.x, y - s.y) < minDist) return true;
+      }
+      return false;
+    };
+
+    while (stars.length < starCount && guard < 1000) {
+      guard++;
+      const x = -half + starMargin + Math.random() * (arenaSize - starMargin * 2);
+      const y = -half + starMargin + Math.random() * (arenaSize - starMargin * 2);
+      if (overlapsObstacle(x, y)) continue;
+      if (overlapsStar(x, y)) continue;
+      stars.push({ id: stars.length, x, y, collected: false });
+    }
+
+    this.stars = stars;
+  }
+
+  removeStar(id: number): void {
+    this.stars = this.stars.filter((s) => s.id !== id);
+  }
+
+  clearStars(): void {
+    this.stars = [];
   }
 
   destroy(): void {

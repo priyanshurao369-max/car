@@ -1,11 +1,23 @@
 "use client";
 
-import { useEffect, useRef, useCallback } from "react";
-import Matter from "matter-js";
+import { useEffect, useRef, useCallback, useState } from "react";
 import { Physics } from "@/game/Physics";
-import { clear, renderVehicle, renderHUD } from "@/game/Render";
+import {
+  clear,
+  renderVehicle,
+  renderStars,
+  renderHUD,
+  renderStarHUD,
+  renderMenuOverlay,
+  renderScoreOverlay,
+  renderModeSelectionOverlay,
+} from "@/game/Render";
 import { VEHICLE_CONFIG } from "@/game/config/vehicle";
 import type { InputState } from "@/game/Input";
+
+type Mode = "modeSelection" | "menu" | "playing" | "score";
+
+type GameMode = "star" | "freeRoam";
 
 type Direction = {
   label: string;
@@ -20,12 +32,92 @@ const DIRECTIONS: Direction[] = [
   { label: "Right", action: "right", icon: "▶" },
 ];
 
+const BEST_KEY = "carStarBestTime";
+
+function getBestTime(): number | null {
+  if (typeof window === "undefined") return null;
+  const raw = window.localStorage.getItem(BEST_KEY);
+  if (raw === null) return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+
+function setBestTime(t: number) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(BEST_KEY, String(t));
+}
+
 export default function GameCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const physicsRef = useRef<Physics | null>(null);
   const inputRef = useRef<{ setKey: (action: keyof InputState, value: boolean) => void; pollGamepad: () => void; vibrate: (ms: number) => void } | null>(null);
   const fpsRef = useRef(0);
   const rafRef = useRef(0);
+
+const [mode, setMode] = useState<Mode>("modeSelection");
+
+  const modeRef = useRef<Mode>("modeSelection");
+  const gameModeRef = useRef<GameMode>("star");
+  const elapsedRef = useRef<number>(0);
+  const remainingRef = useRef<number>(VEHICLE_CONFIG.starCount);
+  const bestRef = useRef<number | null>(getBestTime());
+  const startTimeRef = useRef(0);
+  const lastTickRef = useRef(0);
+  const starsRef = useRef(0);
+
+  const beginStarMode = () => {
+    const p = physicsRef.current;
+    if (!p) return;
+    p.resetStars();
+    p.spawnStars();
+    p.setOnStarCollected(() => {
+      starsRef.current = Math.max(0, starsRef.current - 1);
+      remainingRef.current = starsRef.current;
+      if (starsRef.current === 0) {
+        const finalElapsed = performance.now() - startTimeRef.current;
+        const seconds = finalElapsed / 1000;
+        elapsedRef.current = seconds;
+        const cur = bestRef.current;
+        if (cur === null || seconds < cur) {
+          setBestTime(seconds);
+          bestRef.current = seconds;
+        }
+        modeRef.current = "score";
+        setMode("score");
+      }
+    });
+    starsRef.current = VEHICLE_CONFIG.starCount;
+    remainingRef.current = VEHICLE_CONFIG.starCount;
+    startTimeRef.current = performance.now();
+    lastTickRef.current = startTimeRef.current;
+    elapsedRef.current = 0;
+    modeRef.current = "playing";
+    setMode("playing");
+    gameModeRef.current = "star";
+  };
+
+  const beginFreeRoamMode = () => {
+    const p = physicsRef.current;
+    if (!p) return;
+    p.resetStars();
+    p.setOnStarCollected(null);
+    starsRef.current = 0;
+    remainingRef.current = 0;
+    startTimeRef.current = performance.now();
+    lastTickRef.current = startTimeRef.current;
+    elapsedRef.current = 0;
+    modeRef.current = "playing";
+    setMode("playing");
+    gameModeRef.current = "freeRoam";
+  };
+
+  const restartCurrentMode = () => {
+    if (gameModeRef.current === "star") {
+      beginStarMode();
+    } else {
+      beginFreeRoamMode();
+    }
+  };
 
   const bindButton = useCallback((id: string, action: keyof InputState) => {
     const input = inputRef.current;
@@ -42,6 +134,54 @@ export default function GameCanvas() {
     el.addEventListener("pointerup", release);
     el.addEventListener("pointerleave", release);
     el.addEventListener("pointercancel", release);
+  }, []);
+
+  // Handle mode selection clicks
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const handleClick = (e: MouseEvent) => {
+      if (modeRef.current !== "modeSelection") return;
+
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2;
+      const cardWidth = 280;
+      const cardHeight = 360;
+      const cardGap = 60;
+      const startX = centerX - cardWidth - cardGap / 2;
+      const cardY = centerY - 20;
+      const freeRoamX = centerX + cardGap / 2;
+
+      // Check Star Mode card click
+      if (
+        x >= startX &&
+        x <= startX + cardWidth &&
+        y >= cardY &&
+        y <= cardY + cardHeight
+      ) {
+        beginStarMode();
+        return;
+      }
+
+      // Check Free Roam card click
+      if (
+        x >= freeRoamX &&
+        x <= freeRoamX + cardWidth &&
+        y >= cardY &&
+        y <= cardY + cardHeight
+      ) {
+        beginFreeRoamMode();
+        return;
+      }
+    };
+
+    canvas.addEventListener("click", handleClick);
+    return () => canvas.removeEventListener("click", handleClick);
   }, []);
 
   useEffect(() => {
@@ -81,6 +221,10 @@ export default function GameCanvas() {
         lastTime = time;
       }
 
+      if (modeRef.current === "playing") {
+        elapsedRef.current = (time - startTimeRef.current) / 1000;
+      }
+
       input.pollGamepad();
 
       const state = physics.getVehicleState();
@@ -88,6 +232,7 @@ export default function GameCanvas() {
       const world = physics.getWorld();
       const obstacles = world.obstacles;
       const boundaries = world.boundaries;
+      const stars = world.stars;
       const hitWalls = physics.getHitWalls();
 
       if (hitWalls.size > 0) {
@@ -147,11 +292,29 @@ export default function GameCanvas() {
         ctx.fillRect(obs.x - obs.w / 2, obs.y - obs.h / 2, obs.w, obs.h);
       }
 
+      renderStars(ctx, stars);
       renderVehicle(ctx, state);
 
       ctx.restore();
 
-      renderHUD(ctx, state, fpsRef.current);
+      const currentMode = modeRef.current;
+      if (currentMode === "playing") {
+        if (gameModeRef.current === "star") {
+          renderStarHUD(ctx, elapsedRef.current, remainingRef.current);
+        } else {
+          renderHUD(ctx, state, fpsRef.current);
+        }
+      } else {
+        renderHUD(ctx, state, fpsRef.current);
+      }
+
+      if (currentMode === "modeSelection") {
+        renderModeSelectionOverlay(ctx, canvas.width, canvas.height);
+      } else if (currentMode === "menu") {
+        renderMenuOverlay(ctx, canvas.width, canvas.height);
+      } else if (currentMode === "score") {
+        renderScoreOverlay(ctx, canvas.width, canvas.height, elapsedRef.current, bestRef.current);
+      }
 
       rafRef.current = requestAnimationFrame(render);
     };
@@ -201,6 +364,28 @@ export default function GameCanvas() {
           ))}
         </div>
       </div>
+      {mode === "menu" && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-auto">
+          <button
+            id="start-star-mode"
+            onClick={beginStarMode}
+            className="px-10 py-4 rounded-2xl bg-[#0071e3] text-white text-lg font-semibold border-none active:opacity-90 select-none"
+          >
+            Start Star Mode
+          </button>
+        </div>
+      )}
+      {mode === "score" && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-auto">
+          <button
+            id="restart-mode"
+            onClick={restartCurrentMode}
+            className="px-10 py-4 rounded-2xl bg-[#0071e3] text-white text-lg font-semibold border-none active:opacity-90 select-none"
+          >
+            Restart
+          </button>
+        </div>
+      )}
     </div>
   );
 }
