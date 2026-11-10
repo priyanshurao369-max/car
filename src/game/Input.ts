@@ -61,8 +61,11 @@ export class Input {
     if (!gp) return;
 
     const { axes, buttons } = gp;
-    const lx = axes[0] ?? 0;
-    const ly = axes[1] ?? 0;
+    const sanitizedAxes = axes.map((a) =>
+      typeof a === "number" && !isNaN(a) ? Math.max(-1, Math.min(1, a)) : 0
+    );
+    const lx = sanitizedAxes[0] ?? 0;
+    const ly = sanitizedAxes[1] ?? 0;
     const deadzone = 0.2;
 
     this.setKey("up", ly < -deadzone);

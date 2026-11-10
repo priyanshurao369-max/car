@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import Matter from "matter-js";
 import { Physics } from "@/game/Physics";
 import { clear, renderVehicle, renderHUD } from "@/game/Render";
@@ -23,8 +23,26 @@ const DIRECTIONS: Direction[] = [
 export default function GameCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const physicsRef = useRef<Physics | null>(null);
+  const inputRef = useRef<{ setKey: (action: keyof InputState, value: boolean) => void; pollGamepad: () => void; vibrate: (ms: number) => void } | null>(null);
   const fpsRef = useRef(0);
   const rafRef = useRef(0);
+
+  const bindButton = useCallback((id: string, action: keyof InputState) => {
+    const input = inputRef.current;
+    if (!input) return;
+    const el = document.getElementById(id);
+    if (!el) return;
+    const press = () => {
+      input.setKey(action, true);
+    };
+    const release = () => {
+      input.setKey(action, false);
+    };
+    el.addEventListener("pointerdown", press);
+    el.addEventListener("pointerup", release);
+    el.addEventListener("pointerleave", release);
+    el.addEventListener("pointercancel", release);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -45,21 +63,7 @@ export default function GameCanvas() {
     physics.start();
 
     const input = physics.getInput();
-
-    const bindButton = (id: string, action: keyof InputState) => {
-      const el = document.getElementById(id);
-      if (!el) return;
-      const press = () => {
-        input.setKey(action, true);
-      };
-      const release = () => {
-        input.setKey(action, false);
-      };
-      el.addEventListener("pointerdown", press);
-      el.addEventListener("pointerup", release);
-      el.addEventListener("pointerleave", release);
-      el.addEventListener("pointercancel", release);
-    };
+    inputRef.current = input;
 
     DIRECTIONS.forEach((d) => {
       bindButton(`dpad-${d.action}`, d.action);
@@ -160,7 +164,7 @@ export default function GameCanvas() {
       physics.destroy();
       physicsRef.current = null;
     };
-  }, []);
+  }, [bindButton]);
 
   return (
     <div className="relative w-full h-screen bg-[#000000] overflow-hidden">
